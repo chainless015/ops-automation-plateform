@@ -1,0 +1,23 @@
+# Prometheus配置文件
+
+global:
+  scrape_interval: 15s      # 每15秒采集一次数据
+  evaluation_interval: 15s  # 每15秒评估一次告警规则
+  external_labels:
+    cluster: 'ops-automation-plateform'
+    environment: 'production'
+
+# 数据采集配置
+scrape_configs:
+  # Node Exporter监控（使用文件服务发现，支持动态添加服务器）
+  - job_name: 'node-exporter'
+    file_sd_configs:
+      - files:
+          - '/etc/prometheus/targets/*.json'
+        refresh_interval: 30s  # 每30秒检查一次文件变化
+
+# Alertmanager配置（可选）
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
