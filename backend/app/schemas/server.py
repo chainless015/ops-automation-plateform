@@ -70,3 +70,27 @@ class ServerListResponse(BaseModel):
     page: int
     page_size: int
     items: list[ServerResponse]
+
+
+class SSHTestRequest(BaseModel):
+    """SSH 连接测试请求"""
+    ip_address: str = Field(..., description="IP地址")
+    ssh_port: int = Field(default=22, ge=1, le=65535, description="SSH端口")
+    ssh_username: str = Field(..., min_length=1, max_length=50, description="SSH用户名")
+    ssh_password: Optional[str] = Field(None, description="SSH密码（编辑时留空则使用已保存密码）")
+    server_id: Optional[int] = Field(None, description="服务器ID（编辑时使用已保存密码）")
+
+    @validator("ip_address")
+    def validate_ip(cls, v):
+        try:
+            ipaddress.ip_address(v)
+            return v
+        except ValueError:
+            raise ValueError("Invalid IP address format")
+
+
+class SSHTestResponse(BaseModel):
+    """SSH 连接测试响应"""
+    success: bool
+    message: str
+    duration_seconds: Optional[float] = None

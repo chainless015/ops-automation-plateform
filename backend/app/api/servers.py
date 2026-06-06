@@ -9,10 +9,18 @@ import platform
 import shutil
 import socket
 from app.core.database import get_db
-from app.core.security import encrypt_ssh_password
+from app.core.security import encrypt_ssh_password, decrypt_ssh_password
 from app.models.user import User
 from app.models.server import Server
-from app.schemas.server import ServerCreate, ServerUpdate, ServerResponse, ServerListResponse
+from app.schemas.server import (
+    ServerCreate,
+    ServerUpdate,
+    ServerResponse,
+    ServerListResponse,
+    SSHTestRequest,
+    SSHTestResponse,
+)
+from app.services.ssh_service import test_ssh_connection, SSHConnectionError
 from app.utils.dependencies import get_current_user
 import logging
 
@@ -183,6 +191,55 @@ def create_server(
     logger.info(f"User {current_user.username} created server {server.hostname} ({server.ip_address})")
     
     return ServerResponse(**server.to_dict())
+
+
+@router.post("/test-ssh", response_model=SSHTestResponse)
+def test_server_ssh(
+    data: SSHTestRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """测试 SSH 连接（无需先保存服务器）"""
+    password = data.ssh_password
+    if not password:
+        if not data.server_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="请提供 SSH 密码",
+            )
+        server = db.query(Server).filter(Server.id == data.server_id).first()
+        if not server:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Server not found",
+            )
+        if not server.ssh_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="服务器未配置 SSH 密码",
+            )
+        password = decrypt_ssh_password(server.ssh_password)
+
+    try:
+        duration = test_ssh_connection(
+            ip_address=data.ip_address,
+            port=data.ssh_port,
+            username=data.ssh_username,
+            password=password,
+        )
+        logger.info(
+            f"User {current_user.username} tested SSH to {data.ip_address}:{data.ssh_port} successfully"
+        )
+        return SSHTestResponse(
+            success=True,
+            message="SSH 连接成功",
+            duration_seconds=round(duration, 2),
+        )
+    except SSHConnectionError as e:
+        logger.warning(
+            f"User {current_user.username} SSH test failed for {data.ip_address}:{data.ssh_port}: {e}"
+        )
+        return SSHTestResponse(success=False, message=str(e))
 
 
 @router.get("/{server_id}", response_model=ServerResponse)

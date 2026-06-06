@@ -23,3 +23,7 @@ export const deleteServer = (id) =>
 // 检测服务器在线状态
 export const pingServer = (id) =>
   request.get(`/api/servers/${id}/ping`)
+
+// 测试 SSH 连接（添加/编辑服务器时使用）
+export const testServerSSH = (data) =>
+  request.post('/api/servers/test-ssh', data)

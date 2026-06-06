@@ -102,7 +102,7 @@
           <el-input
             v-model="serverForm.ssh_password"
             type="password"
-            placeholder="请输入SSH密码"
+            :placeholder="isEdit ? '留空则保持原密码' : '请输入SSH密码'"
             show-password
           />
         </el-form-item>
@@ -119,6 +119,14 @@
         </el-form-item>
       </el-form>
       <template #footer>
+        <el-button
+          type="primary"
+          plain
+          :loading="testingSSH"
+          @click="handleTestSSH"
+        >
+          测试连接
+        </el-button>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" @click="handleSubmit" :loading="submitting">
           确定
@@ -132,7 +140,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { getServers, pingServer, createServer, updateServer, deleteServer } from '@/api/servers'
+import { getServers, pingServer, createServer, updateServer, deleteServer, testServerSSH } from '@/api/servers'
 
 const router = useRouter()
 
@@ -144,6 +152,7 @@ const dialogVisible = ref(false)
 const dialogTitle = ref('添加服务器')
 const isEdit = ref(false)
 const submitting = ref(false)
+const testingSSH = ref(false)
 const serverFormRef = ref(null)
 
 const queryParams = reactive({
@@ -184,7 +193,16 @@ const rules = {
     { required: true, message: '请输入SSH用户名', trigger: 'blur' }
   ],
   ssh_password: [
-    { required: true, message: '请输入SSH密码', trigger: 'blur' }
+    {
+      validator: (_rule, value, callback) => {
+        if (!isEdit.value && !value) {
+          callback(new Error('请输入SSH密码'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur'
+    }
   ]
 }
 
@@ -258,6 +276,49 @@ const resetForm = () => {
   serverForm.purpose = ''
   serverForm.owner = ''
   serverFormRef.value?.clearValidate()
+}
+
+const handleTestSSH = async () => {
+  if (!serverFormRef.value) return
+
+  const fields = ['ip_address', 'ssh_port', 'ssh_username']
+  if (!isEdit.value || serverForm.ssh_password) {
+    fields.push('ssh_password')
+  }
+
+  try {
+    await serverFormRef.value.validateField(fields)
+  } catch {
+    return
+  }
+
+  testingSSH.value = true
+  try {
+    const payload = {
+      ip_address: serverForm.ip_address,
+      ssh_port: serverForm.ssh_port,
+      ssh_username: serverForm.ssh_username,
+    }
+    if (serverForm.ssh_password) {
+      payload.ssh_password = serverForm.ssh_password
+    } else if (isEdit.value && serverForm.id) {
+      payload.server_id = serverForm.id
+    }
+
+    const response = await testServerSSH(payload)
+    if (response.data.success) {
+      const duration = response.data.duration_seconds
+      ElMessage.success(
+        duration != null ? `SSH 连接成功（${duration}s）` : 'SSH 连接成功'
+      )
+    } else {
+      ElMessage.error(response.data.message || 'SSH 连接失败')
+    }
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || 'SSH 连接测试失败')
+  } finally {
+    testingSSH.value = false
+  }
 }
 
 const handleSubmit = async () => {

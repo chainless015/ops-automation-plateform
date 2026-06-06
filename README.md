@@ -96,7 +96,51 @@ curl -s http://127.0.0.1:9100/metrics | head
 
 生产环境建议配置为 systemd 服务，保证重启后自启；仅做功能验证时，上述后台启动即可。
 
+配置 systemd 示例：
+```
+# 创建服务文件
+cat > /etc/systemd/system/node_exporter.service << 'EOF'
+[Unit]
+Description=Node Exporter
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/root/node_exporter-1.6.1.linux-amd64/node_exporter
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# 启动并设置开机自启
+systemctl daemon-reload
+systemctl start node_exporter
+systemctl enable node_exporter
+```
+
 平台侧还需能访问被管机的 **9100**（Prometheus 拉取指标）和 **22**（脚本执行、在线检测，端口可在主机台账中修改）。
+
+#### 3. SSH 要求（脚本执行 / 自动化运维）
+
+若需使用 **脚本执行**、**定时任务** 等自动化功能，被管服务器须满足：
+
+- **sshd 已启动**，且平台能访问 SSH 端口（默认 22，可在台账中修改）
+- **允许密码登录**：平台通过 SSH 用户名 + 密码连接，不使用密钥。被管机 `sshd` 需开启密码认证，例如：
+
+```bash
+# 检查 sshd 配置（不同发行版路径可能为 /etc/ssh/sshd_config.d/*.conf）
+grep -E '^PasswordAuthentication' /etc/ssh/sshd_config
+
+# 若 PasswordAuthentication 为 no，需改为 yes 后重载 sshd
+# PasswordAuthentication yes
+sudo systemctl reload sshd   # 或 sshd / ssh
+```
+
+- 台账中填写的 **SSH 用户名、密码正确**；添加或编辑主机时可点击 **「测试连接」** 验证，避免保存错误凭据后执行脚本才失败
+
+> **说明：** 仅使用监控 / 告警（node_exporter）时，不要求 SSH 密码认证可用；但主机存活检测、脚本与定时任务均依赖 SSH。
 
 ### 1. 克隆并配置
 
@@ -156,8 +200,9 @@ curl http://localhost:8000/health
 ## 被管服务器接入
 
 1. 按上文 **前置要求 → 被管服务器** 安装 node_exporter
-2. 在平台「服务器管理」中添加主机（IP、SSH 账号、用途等）
-3. 添加后平台会自动将目标写入 Prometheus；在 Prometheus UI 或「主机存活」告警中确认 `up` 为 1
+2. 若使用脚本或定时任务，确认被管机 **SSH 已开启密码认证**（见上文 **SSH 要求**）
+3. 在平台「服务器管理」中添加主机（IP、SSH 账号、用途等），建议先 **测试连接** 再保存
+4. 添加后平台会自动将目标写入 Prometheus；在 Prometheus UI 或「主机存活」告警中确认 `up` 为 1
 
 ## 开发说明
 

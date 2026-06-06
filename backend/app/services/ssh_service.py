@@ -22,6 +22,55 @@ class SSHExecutionError(Exception):
     pass
 
 
+def test_ssh_connection(
+    ip_address: str,
+    port: int,
+    username: str,
+    password: str,
+    timeout: int = 10
+) -> float:
+    """
+    测试 SSH 连接是否可用
+
+    Returns:
+        连接耗时（秒）
+
+    Raises:
+        SSHConnectionError: 连接或认证失败
+    """
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    start_time = time.time()
+
+    try:
+        logger.info(f"Testing SSH connection to {ip_address}:{port} as {username}")
+        ssh.connect(
+            hostname=ip_address,
+            port=port,
+            username=username,
+            password=password,
+            timeout=timeout,
+        )
+        _, stdout, _ = ssh.exec_command("echo ok", timeout=5)
+        if stdout.channel.recv_exit_status() != 0:
+            raise SSHConnectionError("SSH command test failed")
+        return time.time() - start_time
+    except paramiko.AuthenticationException as e:
+        logger.error(f"SSH authentication failed for {ip_address}: {str(e)}")
+        raise SSHConnectionError("SSH 认证失败，请检查用户名和密码")
+    except paramiko.SSHException as e:
+        logger.error(f"SSH connection error for {ip_address}: {str(e)}")
+        raise SSHConnectionError(f"SSH 连接失败: {str(e)}")
+    except socket.timeout:
+        logger.error(f"SSH connection timeout for {ip_address}")
+        raise SSHConnectionError("SSH 连接超时，请检查 IP、端口及网络连通性")
+    except OSError as e:
+        logger.error(f"SSH network error for {ip_address}: {str(e)}")
+        raise SSHConnectionError(f"无法连接到 {ip_address}:{port}，请检查网络或端口")
+    finally:
+        ssh.close()
+
+
 def execute_script_via_ssh(
     server: Server,
     script_content: str,
